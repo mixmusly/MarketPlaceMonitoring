@@ -1,0 +1,117 @@
+#requests allows to work with http that is a communication protocal of web sites
+
+import requests
+import datetime #needed to outline the time of check
+import random #for random time
+import sqlite3
+
+conn = sqlite3.connect('wb.db') #connecting to the database
+cursor = conn.cursor()#allows to work with database via Python
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS positions (
+        name TEXT,
+        id integer,
+        cpm integer,
+        position integer,
+        promoPosition integer,
+        query TEXT,
+        created_at datetime
+    )
+''') #creates table with the same points as search_arr
+conn.commit() #agrees to make changes into table
+
+cursor.execute('select * from positions') # request all data from the table
+cursor.fetchall() #returns all data from the table
+
+#metadata searchlink withing the site for data of the products. Thriple ''' allows the code transfer
+res = requests.get('''
+  https://search.wb.ru/exactmatch/ru/common/v13/search?ab_testid=rel_promo_masks_control&appType=1&curr=rub&dest=-1257786&hide_dtype=13&lang=ru&page=1&query=%D0%BC%D1%8B%D0%BB%D0%BE&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+''')
+
+#json provides readable data. Data, products are search keys. We iterate the dict for better reading. i is the order index, enumerate is order func.
+for i, product in enumerate(res.json()['data']['products']):
+  print(i, product['name'],'by',product['brand'],'id =',product['id'])
+
+#info about 1st products
+res.json()['data']['products'][0]
+
+#query = 'мыло'
+query_lst = ['жидкое мыло', 'средство для мытья посуды'] # query list
+max_page = 2 #parse 2 pages
+brand = 'SYNERGETIC' #brand name
+
+search_arr = [] #array for data input
+
+for query in query_lst: #itterate every query from the list
+  print(f'\n\n\nProduct: {query}\n')
+
+  cnt = 0 #count is needed later as product position does not exist in the data. This is needed here to refresh the place search of new query
+
+  for page in range(1, max_page + 1): # itterate from page to page
+
+    print(f'СТРАНИЦА {page}')
+
+    res = requests.get(f'''
+    https://search.wb.ru/exactmatch/ru/common/v13/search?ab_testid=false&appType=1&curr=rub&dest=-1257786&hide_dtype=13&lang=ru&page={page}&query={query}&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+  ''')
+
+    products = res.json()['data']['products'] #creates list of needed product
+
+    for product in products:
+
+        cnt +=1 # cnt = cnt + 1
+
+        if product['brand'] == brand: #check if the product of needed brand
+          print(product['name'])
+
+          #randomly created dates
+          dt_now = datetime.datetime.now()
+          # start_date = datetime.datetime(2025, 1, 1) #creates the first date
+          # finish_date = datetime.datetime(2026, 12, 31) #creates the last date
+
+          # diff = (finish_date - start_date).total_seconds() #counts the difference between two dates
+
+          # random_seconds = random.randint(0, int(diff)) #creates the random seconds number within the time period
+
+          # random_dt = start_date + datetime.timedelta(seconds = random_seconds) #creates the random date within the time period
+
+
+          if product.get('log'):     #get is used to prevent the KeyError 'log' in case the product ad is not activated. Log shows that ad is on
+            search_arr.append([      #append adds objects to arrays
+              product['name'],
+              product['id'],
+              product['log']['cpm'],
+              product['log']['position'],
+              product['log']['promoPosition'],
+              query,
+              dt_now
+            ])
+          else: #if log does not exist
+            search_arr.append([
+              product['name'],
+              product['id'],
+              0, #no cpm
+              cnt, #shows the organic position
+              -1, #0 promoPosition does not exist
+              query,
+              dt_now
+            ])
+
+for row in search_arr:
+  cursor.execute('''
+    insert into positions values (?, ?, ?, ?, ?, ?, ?)
+  ''', row)
+  conn.commit()
+
+import pandas as pd
+
+df = pd.DataFrame(search_arr) #df = data frame
+
+df.columns = ['name', 'id', 'cpm', 'pos', 'promo', 'query', 'dt'] #dt = date time
+
+#df['year'] = df['dt'].dt.year #random year monitoring
+df['hour'] = df['dt'].dt.hour #every hour monitoring
+df['minute'] = df['dt'].dt.minute
+
+df.groupby(['name', 'id', 'query', 'hour', 'minute'])[['cpm','pos', 'promo']].mean()
