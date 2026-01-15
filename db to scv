@@ -1,0 +1,19 @@
+# Подключаем sqlite и pandas
+import sqlite3
+import pandas as pd
+
+# Подключаемся к базе
+conn = sqlite3.connect('wb.db')
+
+# Считываем таблицу positions
+df_sql = pd.read_sql_query("SELECT * FROM positions", conn)
+
+# Экспортируем в CSV
+df_sql.to_csv('positions.csv', index=False)
+
+# Закрываем соединение
+conn.close()
+
+# Если нужно скачать файл в Colab
+from google.colab import files
+files.download('positions.csv')
